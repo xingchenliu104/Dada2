@@ -198,3 +198,17 @@ taxa_names(ps) <- paste0("ASV", seq(ntaxa(ps)))
 ps
 ```
 
+```{r}
+plot_richness(ps, x="Day", measures=c("Shannon", "Simpson"), color="When")
+```
+
+```{r}
+# Transform data to proportions as appropriate for Bray-Curtis distances
+ps.prop <- transform_sample_counts(ps, function(otu) otu/sum(otu))
+ord.nmds.bray <- ordinate(ps.prop, method="NMDS", distance="bray")
+```
+
+```{r}
+plot_ordination(ps.prop, ord.nmds.bray, color="When", title="Bray NMDS")
+```
+
