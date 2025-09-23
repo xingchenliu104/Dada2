@@ -125,9 +125,13 @@ head(taxa.print)
 library(DECIPHER); packageVersion("DECIPHER")
 ```
 
+
+
+
+
 ```{r}
 dna <- DNAStringSet(getSequences(seqtab.nochim)) # Create a DNAStringSet from the ASVs
-load("~/tax/IDTaxa/SILVA_SSU_r132_March2018.RData")
+load("~/dossier_1/Dada2/SILVA_SSU_r138_2_2024.RData")
 ids <- IdTaxa(dna, trainingSet, strand="top", processors=NULL, verbose=FALSE) # use all processors
 ranks <- c("domain", "phylum", "class", "order", "family", "genus", "species") # ranks of interest
 
