@@ -1,14 +1,20 @@
 ---
-title: "R Notebook"
-output:
+title: "DADA2 Tuto"
+output:xingchen LIU
   html_document:
     df_print: paged
 ---
+
+
 ```{r}
+
+
 library(dada2); packageVersion("dada2")
 ```
 ```{r}
-path <- "~/dossier_1/Dada2/MiSeq_SOP" # CHANGE ME to the directory containing the fastq files after unzipping.
+
+
+path <- "~/dossier_1/Dada2/MiSeq_SOP"  
 list.files(path)
 ```
 
