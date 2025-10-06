@@ -1,39 +1,52 @@
 ---
 title: "DADA2 Tuto"
-output:xingchen LIU
-  html_document:
+author: "Xingchen LIU"
+output:
+  github_document:
     df_print: paged
 ---
 
 
 ```{r}
-
+#Charger le paquet dada2 et vérifier sa version
 
 library(dada2); packageVersion("dada2")
 ```
 ```{r}
 
+#Dans le terminal : télécharger les fichiers avec wget, les décompresser avec unzip, puis utiliser pwd pour vérifier l’emplacement
+#Vérifier où se trouvent les fichiers et confirmer qu’ils sont en place
 
 path <- "~/dossier_1/Dada2/MiSeq_SOP"  
 list.files(path)
 ```
 
 ```{r}
+
+#Récupérer les chemins des lectures avant/après (forward/reverse) et extraire les noms d’échantillon
+
 fnFs <- sort(list.files(path, pattern="_R1_001.fastq", full.names = TRUE))
 fnRs <- sort(list.files(path, pattern="_R2_001.fastq", full.names = TRUE))
-# Extract sample names, assuming filenames have format: SAMPLENAME_XXX.fastq
+
 sample.names <- sapply(strsplit(basename(fnFs), "_"), `[`, 1)
 ```
 
 ```{r}
+
+#Tracer les courbes de scores de qualité des lectures forward/reverse pour inspecter la distribution de qualité
+
 plotQualityProfile(fnFs[1:2])
 ```
 
 ```{r}
+
 plotQualityProfile(fnRs[1:2])
 ```
 
 ```{r}
+#Définir les chemins de sortie des fichiers filtrés
+
+
 filtFs <- file.path(path, "filtered", paste0(sample.names, "_F_filt.fastq.gz"))
 filtRs <- file.path(path, "filtered", paste0(sample.names, "_R_filt.fastq.gz"))
 names(filtFs) <- sample.names
@@ -41,25 +54,36 @@ names(filtRs) <- sample.names
 ```
 
 ```{r}
+#truncLen=c(240,160) : tronquer à 240 bp (forward) et 160 bp (reverse), d’après les graphes de qualité.
+#maxN=0 : rejeter toutes les lectures contenant des bases ambiguës N.
+#maxEE=c(2,2) : seuil d’erreurs attendues (plus strict = données plus propres).
+#truncQ=2 : tronquer en queue aux positions où Q ≤ 2.
+#rm.phix=TRUE : retirer les lectures de contamination PhiX.
+#L’objet out consigne, par échantillon, le nombre de lectures en entrée et conservées.
+
+
 out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs, truncLen=c(240,160),
               maxN=0, maxEE=c(2,2), truncQ=2, rm.phix=TRUE,
               compress=TRUE, multithread=F) 
 head(out)
 ```
 
+
 ```{r}
+#Estimer, à partir des lectures filtrées, les courbes d’erreur forward/reverse pour le débruitage ultérieur
 errF <- learnErrors(filtFs, multithread=TRUE)
 ```
 
 ```{r}
+
 errR <- learnErrors(filtRs, multithread=TRUE)
 ```
-
 ```{r}
 plotErrors(errF, nominalQ=TRUE)
 ```
 
 ```{r}
+#À partir du modèle d’erreur, inférer les ASV (variants exacts à la base près) pour chaque échantillon
 dadaFs <- dada(filtFs, err=errF, multithread=TRUE)
 ```
 
@@ -72,6 +96,7 @@ dadaFs[[1]]
 ```
 
 ```{r}
+#Fusionner correctement les paires forward/reverse d’un même amplicon via leur région de recouvrement
 mergers <- mergePairs(dadaFs, filtFs, dadaRs, filtRs, verbose=TRUE)
 head(mergers[[1]])
 ```
@@ -86,6 +111,12 @@ table(nchar(getSequences(seqtab)))
 ```
 
 ```{r}
+#makeSequenceTable : obtenir la matrice de comptage Échantillons × ASV.
+#table(nchar(...)) : vérifier si la distribution des longueurs d’ASV est centrée autour de la longueur attendue de l’amplicon.
+#removeBimeraDenovo : enlever les séquences chimériques (artefacts PCR).
+#Calculer le ratio avant/après détection des chimères pour évaluer la perte de lectures.
+
+
 seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=TRUE, verbose=TRUE)
 dim(seqtab.nochim)
 ```
@@ -95,15 +126,20 @@ sum(seqtab.nochim)/sum(seqtab)
 ```
 
 ```{r}
+#Assembler les statistiques par étape (entrée → filtrage → débruitage → fusion → déchimérisation) pour visualiser les taux de rétention
+
 getN <- function(x) sum(getUniques(x))
 track <- cbind(out, sapply(dadaFs, getN), sapply(dadaRs, getN), sapply(mergers, getN), rowSums(seqtab.nochim))
-# If processing a single sample, remove the sapply calls: e.g. replace sapply(dadaFs, getN) with getN(dadaFs)
+
+
 colnames(track) <- c("input", "filtered", "denoisedF", "denoisedR", "merged", "nonchim")
 rownames(track) <- sample.names
 head(track)
 ```
 
 ```{r}
+#Créer le répertoire et télécharger les fichiers d’entraînement taxonomique SILVA 132 et l’ensemble d’assignation des espèces
+
 dir.create("~/tax", showWarnings = FALSE)
 download.file("https://zenodo.org/record/1172783/files/silva_nr_v132_train_set.fa.gz",
               destfile = "~/tax/silva_nr_v132_train_set.fa.gz", mode = "wb")
@@ -114,6 +150,7 @@ download.file("https://zenodo.org/record/1172783/files/silva_species_assignment_
 ```
 
 ```{r}
+#Annotation taxonomique basée sur DADA2
 taxa <- assignTaxonomy(seqtab.nochim, "~/tax/silva_nr_v132_train_set.fa.gz", multithread=TRUE)
 ```
 
@@ -122,20 +159,14 @@ taxa <- addSpecies(taxa, "~/tax/silva_species_assignment_v132.fa.gz")
 ```
 
 ```{r}
-taxa.print <- taxa # Removing sequence rownames for display only
+taxa.print <- taxa 
 rownames(taxa.print) <- NULL
 head(taxa.print)
 ```
 
 ```{r}
+#Deuxième voie d’annotation pour validation croisée
 library(DECIPHER); packageVersion("DECIPHER")
-```
-
-
-
-
-
-```{r}
 dna <- DNAStringSet(getSequences(seqtab.nochim)) # Create a DNAStringSet from the ASVs
 load("~/dossier_1/Dada2/SILVA_SSU_r138_2_2024.RData")
 ids <- IdTaxa(dna, trainingSet, strand="top", processors=NULL, verbose=FALSE) # use all processors
@@ -151,8 +182,11 @@ colnames(taxid) <- ranks; rownames(taxid) <- getSequences(seqtab.nochim)
 ```
 
 ```{r}
+#Extraire les ASV de l’échantillon Mock et compter le nombre d’entrées inférées
+#Les comparer aux séquences de référence du Mock pour compter les correspondances exactes et évaluer la précision du pipeline
+
 unqs.mock <- seqtab.nochim["Mock",]
-unqs.mock <- sort(unqs.mock[unqs.mock>0], decreasing=TRUE) # Drop ASVs absent in the Mock
+unqs.mock <- sort(unqs.mock[unqs.mock>0], decreasing=TRUE)
 cat("DADA2 inferred", length(unqs.mock), "sample sequences present in the Mock community.\n")
 ```
 
@@ -163,6 +197,7 @@ cat("Of those,", sum(match.ref), "were exact matches to the expected reference s
 ```
 
 ```{r}
+#Charger les packages de visualisation
 library(phyloseq); packageVersion("phyloseq")
 ```
 
@@ -177,7 +212,10 @@ library(ggplot2); packageVersion("ggplot2")
 ```{r}
 theme_set(theme_bw())
 ```
+
+
 ```{r}
+#Déduire depuis les noms d’échantillons le sujet, le sexe et le jour d’échantillonnage, puis définir les groupes temporels Early/Late comme variable de regroupement
 samples.out <- rownames(seqtab.nochim)
 subject <- sapply(strsplit(samples.out, "D"), `[`, 1)
 gender <- substr(subject,1,1)
@@ -190,6 +228,7 @@ rownames(samdf) <- samples.out
 ```
 
 ```{r}
+#Construire l’objet phyloseq et retirer l’échantillon de communauté Mock
 ps <- phyloseq(otu_table(seqtab.nochim, taxa_are_rows=FALSE), 
                sample_data(samdf), 
                tax_table(taxa))
@@ -197,6 +236,7 @@ ps <- prune_samples(sample_names(ps) != "Mock", ps) # Remove mock sample
 ```
 
 ```{r}
+#Intégrer la séquence de chaque OTU/ASV comme séquence de référence dans l’objet phyloseq 
 dna <- Biostrings::DNAStringSet(taxa_names(ps))
 names(dna) <- taxa_names(ps)
 ps <- merge_phyloseq(ps, dna)
@@ -205,11 +245,13 @@ ps
 ```
 
 ```{r}
+#Normaliser d’abord chaque échantillon en abondances relatives (proportions) pour la distance de Bray–Curtis
 plot_richness(ps, x="Day", measures=c("Shannon", "Simpson"), color="When")
 ```
 
 ```{r}
-# Transform data to proportions as appropriate for Bray-Curtis distances
+# Calculer la distance de Bray–Curtis et réaliser un ordonnancement NMDS
+
 ps.prop <- transform_sample_counts(ps, function(otu) otu/sum(otu))
 ord.nmds.bray <- ordinate(ps.prop, method="NMDS", distance="bray")
 ```
@@ -217,7 +259,10 @@ ord.nmds.bray <- ordinate(ps.prop, method="NMDS", distance="bray")
 ```{r}
 plot_ordination(ps.prop, ord.nmds.bray, color="When", title="Bray NMDS")
 ```
+
 ```{r}
+#Diagramme en barres empilées des 20 taxons dominants (Top 20)
+
 top20 <- names(sort(taxa_sums(ps), decreasing=TRUE))[1:20]
 ps.top20 <- transform_sample_counts(ps, function(OTU) OTU/sum(OTU))
 ps.top20 <- prune_taxa(top20, ps.top20)
