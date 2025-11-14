@@ -9,10 +9,9 @@
 <meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
 
 
-<meta name="author" content="Xingchen LIU" />
 
 
-<title>DADA2 Tuto</title>
+<title>Dada2-最终版.knit</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -432,8 +431,6 @@ display: none;
 
 
 
-<h1 class="title toc-ignore">DADA2 Tuto</h1>
-<h4 class="author">Xingchen LIU</h4>
 
 </div>
 
@@ -852,34 +849,34 @@ l’aide d’un ordonnancement NMDS.</p>
 <div class="sourceCode" id="cb102"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb102-1"><a href="#cb102-1" tabindex="-1"></a>ps.prop <span class="ot">&lt;-</span> <span class="fu">transform_sample_counts</span>(ps, <span class="cf">function</span>(otu) otu<span class="sc">/</span><span class="fu">sum</span>(otu))</span>
 <span id="cb102-2"><a href="#cb102-2" tabindex="-1"></a>ord.nmds.bray <span class="ot">&lt;-</span> <span class="fu">ordinate</span>(ps.prop, <span class="at">method=</span><span class="st">&quot;NMDS&quot;</span>, <span class="at">distance=</span><span class="st">&quot;bray&quot;</span>)</span></code></pre></div>
 <pre><code>## Run 0 stress 0.08043117 
-## Run 1 stress 0.1212044 
-## Run 2 stress 0.0947721 
-## Run 3 stress 0.08043117 
-## ... Procrustes: rmse 2.022685e-06  max resid 5.78184e-06 
-## ... Similar to previous best
-## Run 4 stress 0.09477219 
-## Run 5 stress 0.08076338 
-## ... Procrustes: rmse 0.01052936  max resid 0.03241049 
+## Run 1 stress 0.08616061 
+## Run 2 stress 0.08076337 
+## ... Procrustes: rmse 0.01049825  max resid 0.03230933 
+## Run 3 stress 0.08616061 
+## Run 4 stress 0.1336965 
+## Run 5 stress 0.08616061 
 ## Run 6 stress 0.1212044 
-## Run 7 stress 0.08616061 
-## Run 8 stress 0.09477191 
+## Run 7 stress 0.09477177 
+## Run 8 stress 0.1212044 
 ## Run 9 stress 0.08616061 
-## Run 10 stress 0.09477112 
-## Run 11 stress 0.1228545 
-## Run 12 stress 0.08076336 
-## ... Procrustes: rmse 0.01048201  max resid 0.03225566 
-## Run 13 stress 0.08076338 
-## ... Procrustes: rmse 0.01054009  max resid 0.03244544 
+## Run 10 stress 0.1228545 
+## Run 11 stress 0.1010632 
+## Run 12 stress 0.08616061 
+## Run 13 stress 0.08616061 
 ## Run 14 stress 0.08616061 
-## Run 15 stress 0.08616061 
-## Run 16 stress 0.08616061 
-## Run 17 stress 0.08616061 
-## Run 18 stress 0.1212044 
-## Run 19 stress 0.08076343 
-## ... Procrustes: rmse 0.01059707  max resid 0.03263145 
-## Run 20 stress 0.08076337 
-## ... Procrustes: rmse 0.01049003  max resid 0.03228203 
-## *** Best solution repeated 1 times</code></pre>
+## Run 15 stress 0.1010629 
+## Run 16 stress 0.08076343 
+## ... Procrustes: rmse 0.01059514  max resid 0.03262523 
+## Run 17 stress 0.1212045 
+## Run 18 stress 0.08043117 
+## ... Procrustes: rmse 3.531545e-06  max resid 9.431442e-06 
+## ... Similar to previous best
+## Run 19 stress 0.08043117 
+## ... Procrustes: rmse 1.836792e-06  max resid 5.037031e-06 
+## ... Similar to previous best
+## Run 20 stress 0.08076338 
+## ... Procrustes: rmse 0.01053054  max resid 0.03241382 
+## *** Best solution repeated 2 times</code></pre>
 <p>Le diagramme NMDS montre une séparation nette entre les échantillons
 Early et Late, indiquant que la structure des communautés microbiennes
 évolue clairement au cours du temps. Bien que l’analyse de diversité
