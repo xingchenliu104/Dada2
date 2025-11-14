@@ -1,0 +1,311 @@
+---
+title: "DADA2 Tuto"
+author: "Xingchen LIU"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: readable
+    highlight: tango
+---
+
+#Charger le paquet dada2 et vérifier sa version
+
+```{r}
+
+library(dada2); packageVersion("dada2")
+```
+
+
+Dans le terminal : télécharger les fichiers avec wget, les décompresser avec unzip, puis utiliser pwd pour vérifier l’emplacement
+Vérifier où se trouvent les fichiers et confirmer qu’ils sont en place
+
+
+```{r}
+
+#Dans le terminal : télécharger les fichiers avec wget, les décompresser avec unzip, puis utiliser pwd pour vérifier l’emplacement
+#Vérifier où se trouvent les fichiers et confirmer qu’ils sont en place
+
+path <- "~/Dada2/MiSeq_SOP"  
+list.files(path)
+```
+
+
+Récupérer les chemins des lectures avant/après (forward/reverse) et extraire les noms d’échantillon
+
+```{r}
+
+#Récupérer les chemins des lectures avant/après (forward/reverse) 
+
+fnFs <- sort(list.files(path, pattern="_R1_001.fastq", full.names = TRUE))
+fnRs <- sort(list.files(path, pattern="_R2_001.fastq", full.names = TRUE))
+
+sample.names <- sapply(strsplit(basename(fnFs), "_"), `[`, 1)
+```
+
+#Tracer les courbes de scores de qualité des lectures forward/reverse pour inspecter la distribution de qualité
+
+Ce graphique plotQualityProfile montre la distribution des scores de qualité (par quantiles) pour deux échantillons de lectures forward.
+On observe que la qualité est très élevée dans la première partie des lectures (Q ≈ 38–40), mais qu’elle chute nettement vers l’extrémité des reads.
+Il est donc recommandé de choisir une longueur de troncature avant cette baisse de qualité afin d’éviter que les bases de faible qualité n’affectent les étapes d’inférence ultérieures.
+
+```{r}
+plotQualityProfile(fnFs[1:2])
+```
+
+```{r}
+
+plotQualityProfile(fnRs[1:2])
+```
+
+#Définir les chemins de sortie des fichiers filtrés
+
+```{r}
+filtFs <- file.path(path, "filtered", paste0(sample.names, "_F_filt.fastq.gz"))
+filtRs <- file.path(path, "filtered", paste0(sample.names, "_R_filt.fastq.gz"))
+names(filtFs) <- sample.names
+names(filtRs) <- sample.names
+```
+
+Après l’examen des profils de qualité, le choix de truncLen = c(240,160) est tout à fait approprié : les lectures forward conservent une qualité stable jusqu’à environ 240 bp, tandis que les lectures reverse montrent une chute de qualité marquée après 160 bp.
+Grâce à la fonction filterAndTrim(), nous appliquons une troncature des reads, un filtrage de qualité, la suppression des bases ambiguës (N) et des séquences PhiX, tout en fixant un seuil strict d’erreurs attendues (maxEE = 2).
+Cette étape permet d’améliorer significativement la précision du modèle d’erreurs utilisé par la suite.
+
+```{r}
+out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs, truncLen=c(240,160),
+              maxN=0, maxEE=c(2,2), truncQ=2, rm.phix=TRUE,
+              compress=TRUE, multithread=F) 
+head(out)
+```
+
+Estimer, à partir des lectures filtrées, les courbes d’erreur forward/reverse pour le débruitage ultérieur
+
+```{r}
+errF <- learnErrors(filtFs, multithread=TRUE)
+```
+
+```{r}
+
+errR <- learnErrors(filtRs, multithread=TRUE)
+```
+#Visualiser si le modèle d’erreur des lectures forward est bien ajusté : si les courbes d’erreurs observées suivent globalement la tendance théorique tout en reflétant les particularités réelles du séquençage, alors le modèle d’erreur peut être considéré comme fiable.
+
+La plupart des points observés s’alignent le long de la courbe ajustée, ce qui indique que le modèle d’erreur est cohérent avec les données de séquençage réelles et présente un bon ajustement.
+
+```{r}
+plotErrors(errF, nominalQ=TRUE)
+```
+
+#À partir du modèle d’erreur, inférer les ASV (variants exacts à la base près) pour chaque échantillon
+
+Ce résultat correspond à l’étape dada, et indique, pour chaque échantillon, le nombre de lectures conservées après débruitage ainsi que le nombre de séquences uniques (ASV) identifiées à partir des lectures forward filtrées.
+
+```{r}
+dadaFs <- dada(filtFs, err=errF, multithread=TRUE)
+```
+
+```{r}
+dadaRs <- dada(filtRs, err=errR, multithread=TRUE)
+```
+
+À partir de toutes les séquences uniques de cet échantillon, 128 ASV ont finalement été inférés.
+
+```{r}
+dadaFs[[1]]
+```
+
+Dans la majorité des cas, le taux de fusion se situe entre 80 et 95 %, ce qui indique que les régions de chevauchement entre les deux lectures correspondent bien.
+
+```{r}
+mergers <- mergePairs(dadaFs, filtFs, dadaRs, filtRs, verbose=TRUE)
+head(mergers[[1]])
+```
+
+L’ASV table est construite à partir des séquences correctement fusionnées, et le résultat final indique 20 échantillons et 293 ASV.
+
+```{r}
+seqtab <- makeSequenceTable(mergers)
+dim(seqtab)
+```
+
+L’analyse des longueurs des séquences ASV montre que la majorité d’entre elles se concentrent entre 252 et 253 bp, ce qui correspond bien à la taille attendue de l’amplicon et indique que les étapes de fusion et de débruitage se sont déroulées de manière fiable. Seules quelques ASV sont légèrement plus courtes ou plus longues, ce qui peut s’expliquer par des variations naturelles ou de petites différences liées au séquençage.
+
+```{r}
+table(nchar(getSequences(seqtab)))
+```
+
+Au final, DADA2 a identifié et éliminé 61 séquences chimériques.
+Il ne reste que 232 ASV, considérées comme des séquences « réelles et fiables ».
+
+```{r}
+seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=TRUE, verbose=TRUE)
+dim(seqtab.nochim)
+```
+
+Après l’élimination des chimères, environ 96,4 % des reads sont conservés. Autrement dit, presque toutes les séquences valides ont été maintenues, ce qui indique une très bonne qualité des données.
+
+```{r}
+sum(seqtab.nochim)/sum(seqtab)
+```
+
+Assembler les statistiques par étape (entrée → filtrage → débruitage → fusion → déchimérisation) pour visualiser les taux de rétention
+
+```{r}
+getN <- function(x) sum(getUniques(x))
+track <- cbind(out, sapply(dadaFs, getN), sapply(dadaRs, getN), sapply(mergers, getN), rowSums(seqtab.nochim))
+
+
+colnames(track) <- c("input", "filtered", "denoisedF", "denoisedR", "merged", "nonchim")
+rownames(track) <- sample.names
+head(track)
+```
+
+Créer le répertoire et télécharger les fichiers d’entraînement taxonomique SILVA 132 et l’ensemble d’assignation 
+des espèces
+
+```{r}
+dir.create("~/tax", showWarnings = FALSE)
+download.file("https://zenodo.org/record/1172783/files/silva_nr_v132_train_set.fa.gz",
+              destfile = "~/tax/silva_nr_v132_train_set.fa.gz", mode = "wb")
+
+download.file("https://zenodo.org/record/1172783/files/silva_species_assignment_v132.fa.gz",
+              destfile = "~/tax/silva_species_assignment_v132.fa.gz", mode = "wb")
+
+```
+
+Annotation taxonomique basée sur DADA2
+
+```{r}
+taxa <- assignTaxonomy(seqtab.nochim, "~/tax/silva_nr_v132_train_set.fa.gz", multithread=TRUE)
+```
+```{r}
+taxa <- addSpecies(taxa, "~/tax/silva_species_assignment_v132.fa.gz")
+```
+
+Les résultats montrent que ces ASV appartiennent tous au règne Bacteria et sont annotés, selon la base SILVA, comme appartenant au phylum Bacteroidetes.
+
+```{r}
+taxa.print <- taxa 
+rownames(taxa.print) <- NULL
+head(taxa.print)
+```
+
+Une seconde annotation taxonomique indépendante est réalisée à l’aide de la fonction IdTaxa du package DECIPHER. Les séquences ASV sont d’abord converties au format DNAStringSet, puis le jeu d’entraînement SILVA adapté à DECIPHER est chargé. L’annotation taxonomique est ensuite effectuée avec IdTaxa, avant que les résultats ne soient organisés sous forme d’un tableau taxonomique standardisé. 
+
+Cette annotation peut être comparée à celle obtenue via assignTaxonomy de DADA2, permettant ainsi une validation croisée et une amélioration de la fiabilité taxonomique.
+
+```{r}
+library(DECIPHER); packageVersion("DECIPHER")
+dna <- DNAStringSet(getSequences(seqtab.nochim)) # Create a DNAStringSet from the ASVs
+load("~/Dada2/SILVA_SSU_r138_2_2024.RData")
+ids <- IdTaxa(dna, trainingSet, strand="top", processors=NULL, verbose=FALSE) 
+ranks <- c("domain", "phylum", "class", "order", "family", "genus", "species") 
+
+taxid <- t(sapply(ids, function(x) {
+        m <- match(ranks, x$rank)
+        taxa <- x$taxon[m]
+        taxa[startsWith(taxa, "unclassified_")] <- NA
+        taxa
+}))
+colnames(taxid) <- ranks; rownames(taxid) <- getSequences(seqtab.nochim)
+```
+
+Pour évaluer la précision du processus analytique, nous avons vérifié le nombre d’ASV détectés dans la communauté Mock (un échantillon standard composé de souches connues). Après l’élimination des chimères, 20 ASV ont été identifiés dans l’échantillon Mock, ce qui correspond exactement aux 20 séquences réelles connues de cette communauté. Cela indique que DADA2 fournit des résultats très précis et fiables sur cet ensemble de données.
+
+```{r}
+unqs.mock <- seqtab.nochim["Mock",]
+unqs.mock <- sort(unqs.mock[unqs.mock>0], decreasing=TRUE)
+cat("DADA2 inferred", length(unqs.mock), "sample sequences present in the Mock community.\n")
+```
+
+Pour valider davantage la qualité de l’analyse du prélèvement Mock, nous avons comparé les 20 ASV inférées par DADA2 avec les séquences de référence officielles de la communauté Mock. Les résultats montrent que ces 20 ASV correspondent exactement, base par base, aux séquences de référence attendues. Cela indique que la reconstruction réalisée par DADA2 atteint une précision de 100 % sur cet ensemble de données.
+
+```{r}
+mock.ref <- getSequences(file.path(path, "HMP_MOCK.v35.fasta"))
+match.ref <- sum(sapply(names(unqs.mock), function(x) any(grepl(x, mock.ref))))
+cat("Of those,", sum(match.ref), "were exact matches to the expected reference sequences.\n")
+```
+
+#Charger les packages de visualisation
+
+```{r}
+library(phyloseq); packageVersion("phyloseq")
+```
+```{r}
+library(Biostrings); packageVersion("Biostrings")
+```
+
+```{r}
+library(ggplot2); packageVersion("ggplot2")
+```
+
+```{r}
+theme_set(theme_bw())
+```
+
+Déduire depuis les noms d’échantillons le sujet, le sexe et le jour d’échantillonnage, puis définir les groupes temporels Early/Late comme variable de regroupement
+
+```{r}
+samples.out <- rownames(seqtab.nochim)
+subject <- sapply(strsplit(samples.out, "D"), `[`, 1)
+gender <- substr(subject,1,1)
+subject <- substr(subject,2,999)
+day <- as.integer(sapply(strsplit(samples.out, "D"), `[`, 2))
+samdf <- data.frame(Subject=subject, Gender=gender, Day=day)
+samdf$When <- "Early"
+samdf$When[samdf$Day>100] <- "Late"
+rownames(samdf) <- samples.out
+```
+
+Construire l’objet phyloseq et retirer l’échantillon de communauté Mock
+
+```{r}
+ps <- phyloseq(otu_table(seqtab.nochim, taxa_are_rows=FALSE), 
+               sample_data(samdf), 
+               tax_table(taxa))
+ps <- prune_samples(sample_names(ps) != "Mock", ps) 
+```
+
+Nous avons construit avec succès un objet phyloseq complet contenant la table d’abondance des ASV, les métadonnées des échantillons, l’annotation taxonomique ainsi que les séquences de référence (232 ASV × 19 échantillons). Cet objet est prêt pour les analyses ultérieures de diversité alpha/bêta et pour les visualisations.
+
+```{r}
+dna <- Biostrings::DNAStringSet(taxa_names(ps))
+names(dna) <- taxa_names(ps)
+ps <- merge_phyloseq(ps, dna)
+taxa_names(ps) <- paste0("ASV", seq(ntaxa(ps)))
+ps
+```
+
+Les indices de diversité alpha Shannon et Simpson montrent une forte superposition entre les échantillons Early (rouge) et Late (bleu).
+Sur le graphique Shannon, les deux groupes se situent globalement entre 3,0 et 3,8 ; sur le graphique Simpson, ils se concentrent également autour de 0,92 à 0,97.
+Bien que la dispersion interne des points soit légèrement plus large dans le groupe Early et plus resserrée dans le groupe Late, aucune tendance claire à la hausse ou à la baisse n’est observée.
+
+Ainsi, d’après ces deux indices de diversité alpha, il n’existe pas de différence systématique marquée entre les échantillons Early et Late, ni de tendance significative liée au temps.
+Cela indique que la richesse et l’uniformité du microbiote restent relativement stables au cours du prélèvement.
+
+```{r}
+plot_richness(ps, x="Day", measures=c("Shannon", "Simpson"), color="When")
+```
+
+Utiliser la distance de Bray–Curtis pour mesurer le degré de différence entre les échantillons, puis représenter ces divergences à l’aide d’un ordonnancement NMDS.
+
+```{r}
+ps.prop <- transform_sample_counts(ps, function(otu) otu/sum(otu))
+ord.nmds.bray <- ordinate(ps.prop, method="NMDS", distance="bray")
+```
+
+Le diagramme NMDS montre une séparation nette entre les échantillons Early et Late, indiquant que la structure des communautés microbiennes évolue clairement au cours du temps. Bien que l’analyse de diversité alpha révèle une richesse et une uniformité globalement similaires entre les deux groupes, les résultats de diversité bêta mettent en évidence des différences systématiques dans les proportions taxonomiques et dans la composition globale des communautés entre les phases Early et Late.
+
+```{r}
+plot_ordination(ps.prop, ord.nmds.bray, color="When", title="Bray NMDS")
+```
+
+Ce diagramme en barres empilées montre que la composition des communautés microbiennes au niveau de la famille est très similaire entre les groupes Early et Late. Les familles dominantes, telles que les Muribaculaceae, conservent des proportions stables dans les deux groupes. Bien que la variabilité entre échantillons soit légèrement plus élevée dans le groupe Early que dans le groupe Late, aucune différence systématique marquée n’est observée. Cela indique qu’au niveau familial, la composition microbienne ne varie pas de manière significative au cours du temps et ne permet pas d’expliquer la distinction entre les groupes Early et Late.
+
+```{r}
+top20 <- names(sort(taxa_sums(ps), decreasing=TRUE))[1:20]
+ps.top20 <- transform_sample_counts(ps, function(OTU) OTU/sum(OTU))
+ps.top20 <- prune_taxa(top20, ps.top20)
+plot_bar(ps.top20, x="Day", fill="Family") + facet_wrap(~When, scales="free_x")
+```
+
